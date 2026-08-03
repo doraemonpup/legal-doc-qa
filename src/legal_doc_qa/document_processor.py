@@ -9,7 +9,7 @@ import pdfplumber
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from utils.config import Settings
+from legal_doc_qa.config import Settings
 
 
 def extract_text_and_tables(file_bytes: bytes) -> List[Tuple[int, str]]:

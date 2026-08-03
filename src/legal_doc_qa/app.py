@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import streamlit as st
 
-from utils.config import Settings
-from utils.document_processor import process_pdf
-from utils.vector_store import create_store
-from utils.summarizer import generate_summary
-from utils.rag_pipeline import build_qa_chain, answer_question
+from legal_doc_qa.config import Settings
+from legal_doc_qa.document_processor import process_pdf
+from legal_doc_qa.vector_store import create_store
+from legal_doc_qa.summarizer import generate_summary
+from legal_doc_qa.rag_pipeline import build_qa_chain, answer_question
 
 st.set_page_config(
     page_title="Cross-Lingual Contract Analyzer",

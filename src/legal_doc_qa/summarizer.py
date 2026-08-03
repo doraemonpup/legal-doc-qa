@@ -4,8 +4,8 @@ from typing import List
 
 from langchain_core.documents import Document
 
-from utils.config import get_llm, Settings
-from utils.prompts import SUMMARY_PROMPT
+from legal_doc_qa.config import get_llm, Settings
+from legal_doc_qa.prompts import SUMMARY_PROMPT
 
 
 def generate_summary(docs: List[Document], settings: Settings) -> str:

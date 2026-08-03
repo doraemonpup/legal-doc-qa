@@ -3,9 +3,9 @@ from __future__ import annotations
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableParallel, RunnablePassthrough
 
-from utils.config import get_llm, Settings
-from utils.prompts import QA_PROMPT
-from utils.vector_store import get_retriever
+from legal_doc_qa.config import get_llm, Settings
+from legal_doc_qa.prompts import QA_PROMPT
+from legal_doc_qa.vector_store import get_retriever
 
 
 def build_qa_chain(vectorstore, settings: Settings):

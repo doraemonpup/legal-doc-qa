@@ -36,9 +36,15 @@ Thumbs.db
 # Test artifacts
 .pytest_cache/
 .coverage
+.coverage.*
 coverage/
 htmlcov/
 .tox/
+.hypothesis/
+
+# Linters / type checkers
+.ruff_cache/
+.mypy_cache/
 
 # pip
 pip-wheel-metadata-*/

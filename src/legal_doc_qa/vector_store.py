@@ -7,7 +7,7 @@ from typing import List, Optional
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
 
-from utils.config import Settings, get_embeddings
+from legal_doc_qa.config import Settings, get_embeddings
 
 
 def create_store(docs: List[Document], settings: Settings) -> Chroma:
