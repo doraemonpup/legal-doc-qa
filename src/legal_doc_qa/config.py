@@ -8,6 +8,32 @@ from typing import Optional
 from dotenv import load_dotenv
 load_dotenv()
 
+
+class E5PrefixEmbeddings:
+    """Wrap an HF embeddings model, adding the 'query:'/'passage:' prefixes
+    required by the E5 family (intfloat/multilingual-e5-*) for best retrieval
+    accuracy. Other models are passed through unchanged."""
+
+    def __init__(self, model_name: str):
+        from langchain_huggingface import HuggingFaceEmbeddings
+
+        self._use_prefixes = "e5" in model_name.lower()
+        self._inner = HuggingFaceEmbeddings(
+            model_name=model_name,
+            encode_kwargs={"normalize_embeddings": True},
+        )
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        if self._use_prefixes:
+            texts = [f"passage: {t}" for t in texts]
+        return self._inner.embed_documents(texts)
+
+    def embed_query(self, text: str) -> list[float]:
+        if self._use_prefixes:
+            text = f"query: {text}"
+        return self._inner.embed_query(text)
+
+
 @dataclass
 class Settings:
     llm_provider: str = field(default_factory=lambda: os.getenv("LLM_PROVIDER", "ollama"))
@@ -16,7 +42,8 @@ class Settings:
     openrouter_api_key: Optional[str] = field(default_factory=lambda: os.getenv("OPENROUTER_API_KEY"))
     openrouter_model: str = field(default_factory=lambda: os.getenv("OPENROUTER_MODEL", "openrouter/free"))
     ollama_model: str = field(default_factory=lambda: os.getenv("OLLAMA_MODEL", "qwen3.5:9b"))
-    embedding_model: str = field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", "qwen3-embedding:0.6b"))
+    embedding_provider: str = field(default_factory=lambda: os.getenv("EMBEDDING_PROVIDER", "huggingface"))
+    embedding_model: str = field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-base"))
     chroma_persist_dir: str = field(default_factory=lambda: os.getenv("CHROMA_PERSIST_DIR", "./chroma_db"))
     chunk_size: int = field(default_factory=lambda: int(os.getenv("CHUNK_SIZE", "1000")))
     chunk_overlap: int = field(default_factory=lambda: int(os.getenv("CHUNK_OVERLAP", "200")))
@@ -24,6 +51,7 @@ class Settings:
 
     def __post_init__(self):
         self.llm_provider = self.llm_provider.lower()
+        self.embedding_provider = self.embedding_provider.lower()
         self.validate()
 
     def validate(self) -> None:
@@ -34,6 +62,9 @@ class Settings:
             raise ValueError("OPENAI_API_KEY required for openai provider")
         if self.llm_provider == "openrouter" and not self.openrouter_api_key:
             raise ValueError("OPENROUTER_API_KEY required for openrouter provider")
+
+        if self.embedding_provider not in ("huggingface", "ollama"):
+            raise ValueError(f"Invalid EMBEDDING_PROVIDER: {self.embedding_provider}")
 
 
 def get_llm(settings: Settings):
@@ -60,16 +91,12 @@ def get_llm(settings: Settings):
         temperature=0,
     )
 
-# Embedding Model from Huggingface
-# def get_embeddings(settings: Settings):
-#     from langchain_huggingface import HuggingFaceEmbeddings
-#     return HuggingFaceEmbeddings(
-#         model_name=settings.embedding_model,
-#     )
 
 def get_embeddings(settings: Settings):
-    from langchain_ollama import OllamaEmbeddings
-    return OllamaEmbeddings(
-        model=settings.embedding_model,
-        dimensions=768
-    )
+    if settings.embedding_provider == "ollama":
+        from langchain_ollama import OllamaEmbeddings
+        return OllamaEmbeddings(
+            model=settings.embedding_model,
+            dimensions=768,
+        )
+    return E5PrefixEmbeddings(settings.embedding_model)
