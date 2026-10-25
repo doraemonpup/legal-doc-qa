@@ -4,10 +4,9 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional
 
+# Load .env only once
 from dotenv import load_dotenv
-
 load_dotenv()
-
 
 @dataclass
 class Settings:
@@ -25,6 +24,16 @@ class Settings:
 
     def __post_init__(self):
         self.llm_provider = self.llm_provider.lower()
+        self.validate()
+
+    def validate(self) -> None:
+        if self.llm_provider not in ("ollama", "openai", "openrouter"):
+            raise ValueError(f"Invalid LLM_PROVIDER: {self.llm_provider}")
+
+        if self.llm_provider == "openai" and not self.openai_api_key:
+            raise ValueError("OPENAI_API_KEY required for openai provider")
+        if self.llm_provider == "openrouter" and not self.openrouter_api_key:
+            raise ValueError("OPENROUTER_API_KEY required for openrouter provider")
 
 
 def get_llm(settings: Settings):

@@ -8,23 +8,15 @@ from legal_doc_qa.vector_store import create_store
 from legal_doc_qa.summarizer import generate_summary
 from legal_doc_qa.rag_pipeline import build_qa_chain, answer_question
 
-st.set_page_config(
-    page_title="Cross-Lingual Contract Analyzer",
-    page_icon="📄",
-    layout="wide",
-)
-
 WELCOME_TEXT = """
-# 📄 Cross-Lingual Contract Analyzer
+# 📜 Legal Document Analyzer
 
-Upload a contract in any language and get:
+Upload a PDF contract to get:
+- **Key findings summary** (critical clauses, obligations, risks)
+- **Q&A chat session** (ask questions in any language)
 
-- 🔑 **Instant key findings summary** — dates, costs, risks, red flags
-- 💬 **Ask questions in your language** — get answers with original source quotes
-
-No registration needed. All processing happens locally (or via your OpenAI key).
+The analyzer will help you understand your contract's terms clearly.
 """
-
 
 def init_session_state():
     if "settings" not in st.session_state:
@@ -44,14 +36,14 @@ def init_session_state():
     if "welcomed" not in st.session_state:
         st.session_state.welcomed = False
 
-
 def clear_session():
-    keys = ["doc_processed", "vectorstore", "chain", "summary", "messages", "filename", "welcomed"]
+    keys = ["doc_processed", "vectorstore", "chain", "summary", "messages", "filename"]
     for k in keys:
         if k in st.session_state:
             del st.session_state[k]
+    if "welcomed" in st.session_state:
+        del st.session_state["welcomed"]
     st.rerun()
-
 
 def render_sidebar():
     with st.sidebar:
@@ -72,7 +64,6 @@ def render_sidebar():
 
         st.divider()
         st.caption("Cross-Lingual Contract Analyzer v1.0")
-
 
 def handle_upload(uploaded_file):
     with st.spinner("📖 Extracting text from PDF..."):
@@ -103,11 +94,9 @@ def handle_upload(uploaded_file):
 
     st.rerun()
 
-
 def render_summary():
     st.subheader("🔑 Key Findings Summary", divider="blue")
     st.markdown(st.session_state.summary)
-
 
 def render_chat():
     st.subheader("💬 Ask Questions About Your Document", divider="blue")
@@ -160,12 +149,10 @@ def render_chat():
                 "source_docs": source_docs,
             })
 
-
 def render_welcome():
     if not st.session_state.welcomed and not st.session_state.doc_processed:
         st.markdown(WELCOME_TEXT)
         st.session_state.welcomed = True
-
 
 def render_upload():
     container = st.container()
@@ -186,7 +173,6 @@ def render_upload():
             if st.button("📤 Upload Different Document", type="secondary"):
                 clear_session()
 
-
 def main():
     init_session_state()
     render_sidebar()
@@ -196,7 +182,6 @@ def main():
     if st.session_state.doc_processed:
         render_summary()
         render_chat()
-
 
 if __name__ == "__main__":
     main()

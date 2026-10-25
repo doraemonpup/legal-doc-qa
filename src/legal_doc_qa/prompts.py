@@ -11,7 +11,7 @@ SYSTEM_PROMPT = """You are an empathetic, expert international legal consultant.
 
 QA_PROMPT = ChatPromptTemplate.from_messages([
     ("system", SYSTEM_PROMPT),
-    ("system", "Here are the relevant excerpts from the document:\n\n{context}"),
+    ("system", "Document excerpts:\n\n{context}"),
     ("human", "{input}"),
 ])
 
