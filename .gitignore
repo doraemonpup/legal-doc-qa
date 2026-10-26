@@ -15,6 +15,7 @@ venv/
 
 # Vector store persistence
 chroma_db/
+summary_cache.json
 
 # IDE
 .vscode/

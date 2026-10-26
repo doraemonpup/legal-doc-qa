@@ -6,7 +6,10 @@ Legal Document Analyzer — upload a contract PDF (in any language) and get a ke
 
 - 📄 **PDF upload** — pdfplumber extracts text and tables; one corrupt page won't fail the whole document (up to 50MB).
 - 🔑 **Key findings summary** — critical clauses, obligations, hidden risks, governing law.
+  Map-reduce over the whole document, so long contracts are fully covered; findings cite
+  `[Page N]` references.
 - 💬 **Cross-lingual Q&A** — ask in your language; answers quote the original source text.
+- 🔄 **Session restore** — a page refresh reloads the document, summary, and chat from disk.
 - 🔒 **Local embeddings** — multilingual e5 model runs in-process; no embedding service needed.
 
 ## Setup
@@ -35,5 +38,9 @@ uv run streamlit run src/legal_doc_qa/app.py
 
 ## Notes
 
-- Vector state persists in `./chroma_db` (gitignored). The store is reset on every upload, so only the current document is searchable. Delete the directory to reset everything.
-- Retrieved context is capped (8k chars for Q&A, ~14k for the summary) to avoid prompt overflow.
+- Vector state persists in `./chroma_db` (gitignored) with the summary cached in
+  `./summary_cache.json`. The store is reset on every upload, so only the current
+  document is searchable. On startup the app restores the previous session from disk;
+  "New Document" wipes both. Delete the files to reset everything.
+- Retrieved Q&A context is capped at 8k chars; the summary runs map-reduce in 14k-char
+  batches so full contracts are covered.

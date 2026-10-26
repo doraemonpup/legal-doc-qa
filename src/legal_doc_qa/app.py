@@ -4,7 +4,13 @@ import streamlit as st
 
 from legal_doc_qa.config import Settings
 from legal_doc_qa.document_processor import process_pdf
-from legal_doc_qa.vector_store import create_store
+from legal_doc_qa.vector_store import (
+    create_store,
+    docs_from_store,
+    load_store,
+    reset_persisted_state,
+)
+from legal_doc_qa.summary_cache import load_summary, save_summary
 from legal_doc_qa.summarizer import generate_summary
 from legal_doc_qa.rag_pipeline import build_qa_chain, answer_question
 
@@ -33,16 +39,19 @@ def init_session_state():
         st.session_state.messages = []
     if "filename" not in st.session_state:
         st.session_state.filename = None
+    if "page_warnings" not in st.session_state:
+        st.session_state.page_warnings = []
     if "welcomed" not in st.session_state:
         st.session_state.welcomed = False
 
 def clear_session():
-    keys = ["doc_processed", "vectorstore", "chain", "summary", "messages", "filename"]
+    keys = ["doc_processed", "vectorstore", "chain", "summary", "messages", "filename", "page_warnings"]
     for k in keys:
         if k in st.session_state:
             del st.session_state[k]
     if "welcomed" in st.session_state:
         del st.session_state["welcomed"]
+    reset_persisted_state(st.session_state.settings)
     st.rerun()
 
 def render_sidebar():
@@ -63,25 +72,33 @@ def render_sidebar():
                 clear_session()
 
         st.divider()
-        st.caption("Cross-Lingual Contract Analyzer v1.0")
+        st.caption("Legal Document Analyzer v1.1")
 
 def handle_upload(uploaded_file):
-    with st.spinner("📖 Extracting text from PDF..."):
-        file_bytes = uploaded_file.read()
-        filename = uploaded_file.name
-        settings = st.session_state.settings
+    file_bytes = uploaded_file.read()
+    filename = uploaded_file.name
+    settings = st.session_state.settings
 
+    with st.spinner("📖 Extracting text from PDF..."):
         try:
-            docs = process_pdf(file_bytes, settings, filename)
+            docs, page_warnings = process_pdf(file_bytes, settings, filename)
         except ValueError as e:
             st.error(str(e))
             return
 
     with st.spinner("🧠 Embedding and storing in vector database..."):
-        vectorstore = create_store(docs, settings)
+        try:
+            vectorstore = create_store(docs, settings)
+        except Exception as e:
+            st.error(f"Failed to build the vector store: {e}")
+            return
 
     with st.spinner("📋 Generating key findings summary..."):
-        summary = generate_summary(docs, settings)
+        try:
+            summary = generate_summary(docs, settings)
+        except Exception as e:
+            st.error(f"Failed to generate the key findings summary: {e}")
+            return
 
     chain = build_qa_chain(vectorstore, settings)
 
@@ -91,12 +108,39 @@ def handle_upload(uploaded_file):
     st.session_state.doc_processed = True
     st.session_state.filename = filename
     st.session_state.messages = []
+    st.session_state.page_warnings = page_warnings
+
+    save_summary(settings, filename, summary)
 
     st.rerun()
 
+def try_restore_session():
+    """Reload a previous document (vector store + cached summary) after a refresh."""
+    if st.session_state.doc_processed:
+        return
+    settings = st.session_state.settings
+    store = load_store(settings)
+    if store is None:
+        return
+
+    cached = load_summary(settings)
+    if cached is None:
+        return
+
+    try:
+        chain = build_qa_chain(store, settings)
+    except Exception:
+        return
+
+    st.session_state.vectorstore = store
+    st.session_state.chain = chain
+    st.session_state.summary = cached["summary"]
+    st.session_state.filename = cached.get("filename") or "restored document"
+    st.session_state.doc_processed = True
+
 def render_summary():
     st.subheader("🔑 Key Findings Summary", divider="blue")
-    st.markdown(st.session_state.summary)
+    st.markdown(st.session_state.summary or "_Summary unavailable — re-upload the document to regenerate it._")
 
 def render_chat():
     st.subheader("💬 Ask Questions About Your Document", divider="blue")
@@ -170,11 +214,17 @@ def render_upload():
                 handle_upload(uploaded_file)
         else:
             st.success(f"✅ **{st.session_state.filename}** processed successfully")
+            if st.session_state.page_warnings:
+                st.warning(
+                    f"⚠️ {len(st.session_state.page_warnings)} page(s) could not be read and were skipped:\n\n"
+                    + "\n".join(f"- {w}" for w in st.session_state.page_warnings)
+                )
             if st.button("📤 Upload Different Document", type="secondary"):
                 clear_session()
 
 def main():
     init_session_state()
+    try_restore_session()
     render_sidebar()
     render_welcome()
     render_upload()

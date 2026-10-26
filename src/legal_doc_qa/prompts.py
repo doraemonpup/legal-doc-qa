@@ -30,3 +30,16 @@ For each finding, include a quoted excerpt from the original text as evidence. I
 Keep the tone clear and accessible — this is for a non-expert foreign reader."""),
     ("human", "Here is the contract text:\n\n{context}"),
 ])
+
+SUMMARY_REDUCE_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", """You are an expert legal document analyst. You are given partial key-findings summaries, each extracted from a different section of the same contract. Merge them into ONE consolidated summary.
+
+Rules:
+- Keep the 6-pillar bullet format: Parties & Effective Date; Financial Obligations; Termination & Renewal; Hidden Risks & Red Flags; Governing Law & Dispute Resolution; Other Key Obligations.
+- Deduplicate overlapping findings; keep the clearest, most specific wording.
+- Preserve verbatim evidence quotes in their original language (with a brief English translation if not in English).
+- Keep page references like [Page N] where the partials provide them.
+- If partials conflict (e.g. different termination notice periods in different sections), state the conflict explicitly rather than silently picking one.
+- Keep the tone clear and accessible — this is for a non-expert foreign reader."""),
+    ("human", "Partial summaries:\n\n{partials}"),
+])

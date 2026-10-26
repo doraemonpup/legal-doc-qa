@@ -12,13 +12,14 @@ from legal_doc_qa.config import Settings
 
 MAX_PDF_SIZE_MB = 50
 
-def extract_text_and_tables(file_bytes: bytes, filename: str = "document.pdf") -> List[Tuple[int, str]]:
-    """Extract text and tables from PDF with robust error handling."""
+def extract_text_and_tables(file_bytes: bytes, filename: str = "document.pdf") -> Tuple[List[Tuple[int, str]], List[str]]:
+    """Extract text and tables from PDF. Returns (pages, warnings for skipped pages)."""
     size_mb = len(file_bytes) / (1024 * 1024)
     if size_mb > MAX_PDF_SIZE_MB:
         raise ValueError(f"PDF too large ({size_mb:.1f}MB). Max: {MAX_PDF_SIZE_MB}MB")
 
     pages_content = []
+    warnings: List[str] = []
     tmp_path = None
 
     try:
@@ -57,7 +58,7 @@ def extract_text_and_tables(file_bytes: bytes, filename: str = "document.pdf") -
                         pages_content.append((page.page_number, combined.strip()))
 
                 except Exception as page_error:
-                    print(f"⚠️ Warning: Skipped page {page.page_number} - {str(page_error)}")
+                    warnings.append(f"Page {page.page_number}: {page_error}")
 
     except pdfplumber.pdfminer.pdfdocument.PDFPasswordIncorrect:
         raise ValueError("PDF is encrypted with a password. Remove password protection or provide it.")
@@ -74,7 +75,7 @@ def extract_text_and_tables(file_bytes: bytes, filename: str = "document.pdf") -
             "Try a document with selectable text."
         )
 
-    return pages_content
+    return pages_content, warnings
 
 def chunk_documents(
     pages_content: List[Tuple[int, str]],
@@ -106,8 +107,8 @@ def chunk_documents(
 
     return chunked_docs
 
-def process_pdf(file_bytes: bytes, settings: Settings, filename: str = "document.pdf") -> List[Document]:
-    """Main entry point: process PDF bytes into Document objects."""
-    pages_content = extract_text_and_tables(file_bytes, filename)
+def process_pdf(file_bytes: bytes, settings: Settings, filename: str = "document.pdf") -> Tuple[List[Document], List[str]]:
+    """Main entry point: process PDF bytes into (Document chunks, warnings)."""
+    pages_content, warnings = extract_text_and_tables(file_bytes, filename)
     chunked_docs = chunk_documents(pages_content, settings, filename)
-    return chunked_docs
+    return chunked_docs, warnings

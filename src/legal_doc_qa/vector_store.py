@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import shutil
 from pathlib import Path
 from typing import List, Optional
@@ -10,6 +9,7 @@ from langchain_core.retrievers import BaseRetriever
 from langchain_chroma import Chroma
 
 from legal_doc_qa.config import Settings, get_embeddings
+from legal_doc_qa.summary_cache import clear_summary
 
 
 def create_store(docs: List[Document], settings: Settings) -> Chroma:
@@ -50,6 +50,23 @@ def load_store(settings: Settings) -> Optional[Chroma]:
         return vectorstore
     except Exception:
         return None
+
+
+def docs_from_store(vectorstore: Chroma) -> List[Document]:
+    """Rebuild Document objects from everything currently in the store."""
+    data = vectorstore._collection.get(include=["documents", "metadatas"])
+    docs = []
+    for text, meta in zip(data.get("documents") or [], data.get("metadatas") or []):
+        docs.append(Document(page_content=text, metadata=meta or {}))
+    return docs
+
+
+def reset_persisted_state(settings: Settings) -> None:
+    """Delete the persisted vector store and summary cache."""
+    persist_dir = Path(settings.chroma_persist_dir)
+    if persist_dir.exists():
+        shutil.rmtree(persist_dir)
+    clear_summary(settings)
 
 
 def get_retriever(vectorstore: Chroma, k: int = 5) -> BaseRetriever:
