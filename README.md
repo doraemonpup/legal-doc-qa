@@ -52,3 +52,7 @@ uv run streamlit run src/legal_doc_qa/app.py
 - Retrieval is hybrid (BM25 + vector via reciprocal rank fusion). `RETRIEVAL_SCORE_THRESHOLD`
   (default 0.2) filters weak vector matches; when nothing survives, the app answers with a
   fixed not-found message without calling the LLM.
+- Uploads run in a dedicated processing step (extraction → embedding → analysis) with live
+  progress and per-stage timings; the intro text stays on screen while it works. Failures
+  return to the upload screen with a 🔁 Try again gate. LLM calls time out after 90s —
+  free-tier routers such as `openrouter/free` are rate-limited and can be slow.

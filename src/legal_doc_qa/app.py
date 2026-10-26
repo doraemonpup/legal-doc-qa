@@ -77,8 +77,6 @@ def init_session_state():
         st.session_state.pending_upload = None
     if "upload_error" not in st.session_state:
         st.session_state.upload_error = None
-    if "welcomed" not in st.session_state:
-        st.session_state.welcomed = False
 
 def clear_session():
     keys = [
@@ -91,8 +89,6 @@ def clear_session():
     for k in keys:
         if k in st.session_state:
             del st.session_state[k]
-    if "welcomed" in st.session_state:
-        del st.session_state["welcomed"]
     reset_persisted_state(st.session_state.settings)
     st.rerun()
 
@@ -315,9 +311,10 @@ def render_chat():
     })
 
 def render_welcome():
-    if not st.session_state.welcomed and not st.session_state.doc_processed:
+    # Intro stays visible on the upload and processing screens; once a document
+    # is processed it yields to the summary + chat.
+    if not st.session_state.doc_processed:
         st.markdown(WELCOME_TEXT)
-        st.session_state.welcomed = True
 
 def render_upload():
     if st.session_state.doc_processed:
