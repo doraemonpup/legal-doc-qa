@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from legal_doc_qa.config import Settings
 
@@ -11,11 +11,14 @@ def _cache_path(settings: Settings) -> Path:
     return Path(settings.chroma_persist_dir).with_name("summary_cache.json")
 
 
-def save_summary(settings: Settings, filename: str, summary: str) -> None:
-    """Persist the key-findings summary next to the vector store."""
+def save_summary(settings: Settings, filename: str, summary: str, questions: Optional[List[str]] = None) -> None:
+    """Persist the key-findings summary and suggested questions next to the vector store."""
     path = _cache_path(settings)
     path.write_text(
-        json.dumps({"filename": filename, "summary": summary}, ensure_ascii=False),
+        json.dumps(
+            {"filename": filename, "summary": summary, "questions": questions or []},
+            ensure_ascii=False,
+        ),
         encoding="utf-8",
     )
 

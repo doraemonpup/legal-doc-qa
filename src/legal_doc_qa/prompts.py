@@ -43,3 +43,13 @@ Rules:
 - Keep the tone clear and accessible — this is for a non-expert foreign reader."""),
     ("human", "Partial summaries:\n\n{partials}"),
 ])
+
+CONDENSE_QUESTION_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", """You rewrite a follow-up question as a standalone search query for a document retrieval system. Use the conversation for context, but the query must be answerable without it. Reply with the rewritten query only — no explanation, no quotes."""),
+    ("human", "Conversation so far:\n{chat_history}\n\nFollow-up question: {question}"),
+])
+
+SUGGESTED_QUESTIONS_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", """You generate short follow-up questions that a non-expert reader might ask about a contract they just received a summary of. Generate exactly 3 questions, one per line. No numbering, no bullets, no quotation marks. Base them strictly on the provided summary."""),
+    ("human", "Summary:\n\n{summary}"),
+])

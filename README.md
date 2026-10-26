@@ -9,7 +9,10 @@ Legal Document Analyzer — upload a contract PDF (in any language) and get a ke
   Map-reduce over the whole document, so long contracts are fully covered; findings cite
   `[Page N]` references.
 - 💬 **Cross-lingual Q&A** — ask in your language; answers quote the original source text.
-- 🔄 **Session restore** — a page refresh reloads the document, summary, and chat from disk.
+  Follow-up questions are rewritten with chat history before retrieval, and answers stream
+  in as they're generated.
+- 💡 **Suggested questions** — 3–5 clickable follow-ups generated from the summary.
+- 🔄 **Session restore** — a page refresh reloads the document, summary, suggestions, and chat from disk.
 - 🔒 **Local embeddings** — multilingual e5 model runs in-process; no embedding service needed.
 
 ## Setup

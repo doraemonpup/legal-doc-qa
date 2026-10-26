@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from typing import List, Union
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnableParallel, RunnablePassthrough
+from typing import Generator, List, Optional
+
 from langchain_core.documents import Document
 
 from legal_doc_qa.config import get_llm, Settings
-from legal_doc_qa.prompts import QA_PROMPT
+from legal_doc_qa.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT
 from legal_doc_qa.vector_store import get_retriever
+
+# Bound the history sent to the condense prompt: last 4 exchanges.
+MAX_HISTORY_MESSAGES = 8
 
 
 def format_docs(docs: List[Document], max_chars: int = 8000) -> str:
@@ -27,30 +29,47 @@ def format_docs(docs: List[Document], max_chars: int = 8000) -> str:
     return "\n\n".join(texts)
 
 
-def build_qa_chain(vectorstore, settings: Settings):
-    llm = get_llm(settings)
-    retriever = get_retriever(
-        vectorstore,
-        k=settings.k_retrieval
+def format_chat_history(chat_history: List[dict]) -> str:
+    """Render recent messages as 'Human:/AI:' lines for the condense prompt."""
+    msgs = [m for m in chat_history if m.get("role") in ("user", "assistant")]
+    msgs = msgs[-MAX_HISTORY_MESSAGES:]
+    return "\n".join(
+        f"{'Human' if m['role'] == 'user' else 'AI'}: {m['content']}" for m in msgs
     )
 
-    rag_chain_from_docs = (
-        RunnablePassthrough.assign(
-            context=lambda x: format_docs(x["context"])
+
+def retrieve_context(
+    vectorstore,
+    settings: Settings,
+    question: str,
+    chat_history: Optional[List[dict]] = None,
+) -> List[Document]:
+    """Retrieve chunks for a question, condensing it with chat history if present."""
+    query = question
+    if chat_history:
+        llm = get_llm(settings)
+        messages = CONDENSE_QUESTION_PROMPT.format_messages(
+            chat_history=format_chat_history(chat_history),
+            question=question,
         )
-        | QA_PROMPT
-        | llm
-        | StrOutputParser()
+        condensed = llm.invoke(messages).content.strip()
+        if condensed:
+            query = condensed
+
+    retriever = get_retriever(vectorstore, k=settings.k_retrieval)
+    return retriever.invoke(query)
+
+
+def stream_answer(
+    settings: Settings,
+    question: str,
+    source_docs: List[Document],
+) -> Generator[str, None, None]:
+    """Yield answer tokens for a question given already-retrieved context."""
+    llm = get_llm(settings)
+    messages = QA_PROMPT.format_messages(
+        input=question, context=format_docs(source_docs)
     )
-
-    return RunnableParallel(
-        {"context": retriever, "input": RunnablePassthrough()}
-    ).assign(answer=rag_chain_from_docs)
-
-
-def answer_question(chain, question: str) -> dict[str, Union[str, List[Document]]]:
-    result = chain.invoke(question)
-    return {
-        "answer": result["answer"],
-        "source_docs": result["context"],
-    }
+    for chunk in llm.stream(messages):
+        if chunk.content:
+            yield chunk.content
