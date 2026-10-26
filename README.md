@@ -2,6 +2,10 @@
 
 Legal Document Analyzer — upload a contract PDF (in any language) and get a key-findings summary plus a cross-lingual Q&A chat with verbatim source quotes.
 
+<p align="center">
+  <img src="ss.png" alt="Legal Document Analyzer — upload screen with settings sidebar" width="800">
+</p>
+
 ## Features
 
 - 📄 **PDF upload** — pdfplumber extracts text and tables; one corrupt page won't fail the whole document (up to 50MB).
@@ -16,6 +20,19 @@ Legal Document Analyzer — upload a contract PDF (in any language) and get a ke
 - 💡 **Suggested questions** — 3–5 clickable follow-ups generated from the summary.
 - 🔄 **Session restore** — a page refresh reloads the document, summary, suggestions, and chat from disk.
 - 🔒 **Local embeddings** — multilingual e5 model runs in-process; no embedding service needed.
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| UI | [Streamlit](https://streamlit.io) — chat UI, streaming responses, progress/status |
+| LLM orchestration | [LangChain](https://www.langchain.com) (LCEL pipelines, prompts, retrievers) |
+| LLM providers | OpenRouter / OpenAI / Ollama — selected via `LLM_PROVIDER` |
+| Embeddings | [sentence-transformers](https://www.sbert.net) via `langchain-huggingface` — local `intfloat/multilingual-e5-base` |
+| Vector store | [ChromaDB](https://www.trychroma.com) — persisted, cosine distance, reset per upload |
+| Keyword retrieval | BM25 (`rank-bm25`) fused with vector search (reciprocal rank fusion) |
+| PDF parsing | [pdfplumber](https://github.com/py-pdf/pdfplumber) — text + tables, per-page error isolation |
+| Packaging | [uv](https://docs.astral.sh/uv/) + hatchling, Python ≥ 3.12 |
 
 ## Setup
 
