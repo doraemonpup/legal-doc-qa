@@ -73,6 +73,10 @@ def init_session_state():
         st.session_state.processed_sig = None
     if "failed_sig" not in st.session_state:
         st.session_state.failed_sig = None
+    if "pending_upload" not in st.session_state:
+        st.session_state.pending_upload = None
+    if "upload_error" not in st.session_state:
+        st.session_state.upload_error = None
     if "welcomed" not in st.session_state:
         st.session_state.welcomed = False
 
@@ -80,8 +84,10 @@ def clear_session():
     keys = [
         "doc_processed", "vectorstore", "summary", "messages", "filename",
         "page_warnings", "suggested_questions", "pending_question", "chunks",
-        "processed_sig", "failed_sig",
+        "pending_upload", "upload_error",
     ]
+    # processed_sig/failed_sig persist on purpose: an already-analyzed file must
+    # not silently reprocess after "New Document", and the retry gate survives.
     for k in keys:
         if k in st.session_state:
             del st.session_state[k]
@@ -113,20 +119,32 @@ def render_sidebar():
         st.divider()
         st.caption("Legal Document Analyzer v1.4")
 
-def handle_upload(uploaded_file):
-    file_bytes = uploaded_file.read()
-    filename = uploaded_file.name
-    sig = (filename, getattr(uploaded_file, "size", None))
+def process_pending_upload():
+    """Process the stashed upload in a dedicated script run.
+
+    The file picker is not on screen during this run, so nothing can gray out
+    while the extraction/embedding/analysis work is in progress.
+    """
+    pending = st.session_state.pending_upload
+    if not pending or st.session_state.doc_processed:
+        return
+
     settings = st.session_state.settings
+    filename = pending["filename"]
+    sig = pending["sig"]
+
+    def fail(message: str):
+        st.session_state.failed_sig = sig
+        st.session_state.upload_error = message
+        st.session_state.pending_upload = None
+        st.rerun()
 
     t0 = time.perf_counter()
     with st.spinner("📖 Extracting text from PDF..."):
         try:
-            docs, page_warnings = process_pdf(file_bytes, settings, filename)
+            docs, page_warnings = process_pdf(pending["bytes"], settings, filename)
         except ValueError as e:
-            st.session_state.failed_sig = sig
-            st.error(str(e))
-            return
+            fail(str(e))
     st.caption(f"📖 Extracted {len(docs)} chunks in {time.perf_counter() - t0:.1f}s")
 
     t1 = time.perf_counter()
@@ -137,9 +155,7 @@ def handle_upload(uploaded_file):
 
         vectorstore = create_store(docs, settings, progress_cb=embed_progress)
     except Exception as e:
-        st.session_state.failed_sig = sig
-        st.error(f"Failed to build the vector store: {e}")
-        return
+        fail(f"Failed to build the vector store: {e}")
     st.caption(f"🧠 Embedded in {time.perf_counter() - t1:.1f}s")
 
     summary = ""
@@ -156,9 +172,7 @@ def handle_upload(uploaded_file):
             status.update(label="🔑 Key findings ready", state="complete", expanded=False)
         except Exception as e:
             status.update(label="Summary failed", state="error")
-            st.session_state.failed_sig = sig
-            st.error(f"Failed to generate the key findings summary: {e}")
-            return
+            fail(f"Failed to generate the key findings summary: {e}")
     st.caption(f"📋 Summary generated in {time.perf_counter() - t2:.1f}s")
 
     suggested = []
@@ -178,6 +192,8 @@ def handle_upload(uploaded_file):
     st.session_state.suggested_questions = suggested
     st.session_state.processed_sig = sig
     st.session_state.failed_sig = None
+    st.session_state.upload_error = None
+    st.session_state.pending_upload = None
 
     save_summary(settings, filename, summary, suggested)
 
@@ -304,35 +320,57 @@ def render_welcome():
         st.session_state.welcomed = True
 
 def render_upload():
-    container = st.container()
-    with container:
-        if not st.session_state.doc_processed:
-            st.subheader("📤 Upload Contract")
-            uploaded_file = st.file_uploader(
-                "Drag and drop your PDF here",
-                type="pdf",
-                label_visibility="collapsed",
-                accept_multiple_files=False,
+    if st.session_state.doc_processed:
+        st.success(f"✅ **{st.session_state.filename}** processed successfully")
+        if st.session_state.page_warnings:
+            st.warning(
+                f"⚠️ {len(st.session_state.page_warnings)} page(s) could not be read and were skipped:\n\n"
+                + "\n".join(f"- {w}" for w in st.session_state.page_warnings)
             )
+        if st.button("📤 Upload Different Document", type="secondary"):
+            clear_session()
+        return
 
-            if uploaded_file is not None:
-                sig = (uploaded_file.name, getattr(uploaded_file, "size", None))
-                if sig == st.session_state.failed_sig:
-                    st.warning(f"⚠️ '{uploaded_file.name}' failed to process earlier.")
-                    if st.button("🔁 Try again"):
-                        st.session_state.failed_sig = None
-                        st.rerun()
-                else:
-                    handle_upload(uploaded_file)
-        else:
-            st.success(f"✅ **{st.session_state.filename}** processed successfully")
-            if st.session_state.page_warnings:
-                st.warning(
-                    f"⚠️ {len(st.session_state.page_warnings)} page(s) could not be read and were skipped:\n\n"
-                    + "\n".join(f"- {w}" for w in st.session_state.page_warnings)
-                )
-            if st.button("📤 Upload Different Document", type="secondary"):
-                clear_session()
+    if st.session_state.pending_upload:
+        # The processing run renders its own UI via process_pending_upload().
+        return
+
+    if st.session_state.upload_error:
+        error, st.session_state.upload_error = st.session_state.upload_error, None
+        st.error(error)
+
+    if st.session_state.failed_sig:
+        st.warning(f"⚠️ '{st.session_state.failed_sig[0]}' failed to process earlier.")
+        if st.button("🔁 Try again"):
+            st.session_state.failed_sig = None
+            st.rerun()
+
+    st.subheader("📤 Upload Contract")
+    uploaded_file = st.file_uploader(
+        "Drag and drop your PDF here",
+        type="pdf",
+        label_visibility="collapsed",
+        accept_multiple_files=False,
+    )
+
+    if uploaded_file is None:
+        return
+
+    sig = (uploaded_file.name, getattr(uploaded_file, "size", None))
+    if sig == st.session_state.processed_sig:
+        st.info("This file has already been analyzed. Remove it from the uploader and re-add it to process it again.")
+        return
+    if sig == st.session_state.failed_sig:
+        return  # gated by the Try again button above
+
+    # Stash the file and process it in the NEXT run, so the picker is never
+    # on screen while the long work executes.
+    st.session_state.pending_upload = {
+        "bytes": uploaded_file.read(),
+        "filename": uploaded_file.name,
+        "sig": sig,
+    }
+    st.rerun()
 
 def main():
     init_session_state()
@@ -340,6 +378,7 @@ def main():
     try_restore_session()
     render_sidebar()
     render_welcome()
+    process_pending_upload()
     render_upload()
 
     if st.session_state.doc_processed:
