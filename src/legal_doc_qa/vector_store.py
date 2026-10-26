@@ -11,9 +11,15 @@ from langchain_chroma import Chroma
 from legal_doc_qa.config import Settings, get_embeddings
 from legal_doc_qa.summary_cache import clear_summary
 
+# Chunks embedded per add_documents call so progress can be reported.
+EMBED_BATCH_SIZE = 32
 
-def create_store(docs: List[Document], settings: Settings) -> Chroma:
-    """Create a new Chroma vector store for the uploaded document."""
+
+def create_store(docs: List[Document], settings: Settings, progress_cb=None) -> Chroma:
+    """Create a new Chroma vector store for the uploaded document.
+
+    Embeds in batches so a progress callback can report incremental progress.
+    """
     persist_dir = Path(settings.chroma_persist_dir)
 
     # Reset the store on every upload so chunks from a previous document
@@ -23,13 +29,18 @@ def create_store(docs: List[Document], settings: Settings) -> Chroma:
     persist_dir.mkdir(parents=True, exist_ok=True)
 
     embeddings = get_embeddings(settings)
-    
-    vectorstore = Chroma.from_documents(
-        documents=docs,
-        embedding=embeddings,
+
+    vectorstore = Chroma(
+        embedding_function=embeddings,
         persist_directory=str(persist_dir),
         collection_metadata={"hnsw:space": "cosine"},
     )
+    total = len(docs)
+    for start in range(0, total, EMBED_BATCH_SIZE):
+        batch = docs[start:start + EMBED_BATCH_SIZE]
+        vectorstore.add_documents(batch)
+        if progress_cb:
+            progress_cb(min(start + EMBED_BATCH_SIZE, total), total)
     return vectorstore
 
 

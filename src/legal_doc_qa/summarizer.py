@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, Generator, List, Optional
 
 from langchain_core.documents import Document
@@ -13,6 +14,9 @@ from legal_doc_qa.prompts import (
 
 # Rough cap on prompt size per batch (~4000 tokens, approx 3.5 chars per token).
 MAX_BATCH_CHARS = 14_000
+
+# Map steps run concurrently to cut wall-time on long contracts.
+MAP_WORKERS = 3
 
 
 def _page_tag(doc: Document) -> str:
@@ -44,6 +48,23 @@ def _batch_context(batch: List[Document]) -> str:
 def _summarize_batch(llm, batch: List[Document]) -> str:
     messages = SUMMARY_PROMPT.format_messages(context=_batch_context(batch))
     return llm.invoke(messages).content
+
+
+def _map_partials(llm, batches: List[List[Document]], progress_cb=None) -> List[str]:
+    """Summarize all batches concurrently, preserving section order."""
+    partials: List[Optional[str]] = [None] * len(batches)
+    done = 0
+    with ThreadPoolExecutor(max_workers=min(MAP_WORKERS, len(batches))) as pool:
+        futures = {
+            pool.submit(_summarize_batch, llm, batch): i
+            for i, batch in enumerate(batches)
+        }
+        for future in as_completed(futures):
+            partials[futures[future]] = future.result()
+            done += 1
+            if progress_cb:
+                progress_cb(done, len(batches))
+    return partials
 
 
 def _stream_reduce(llm, partials: List[str]) -> Generator[str, None, None]:
@@ -86,12 +107,7 @@ def generate_summary_progressive(
                 yield chunk.content
         return
 
-    partials: List[str] = []
-    for batch in batches[:-1]:
-        report(len(partials) + 1)
-        partials.append(_summarize_batch(llm, batch))
-    report(len(batches))
-    partials.append(_summarize_batch(llm, batches[-1]))
+    partials = _map_partials(llm, batches, progress_cb)
     yield from _stream_reduce(llm, partials)
 
 
@@ -101,8 +117,7 @@ def generate_summary(docs: List[Document], settings: Settings) -> str:
         return "No documents to summarize."
 
     llm = get_llm(settings)
-    batches = _batch_chunks(docs)
-    partials = [_summarize_batch(llm, batch) for batch in batches]
+    partials = _map_partials(llm, _batch_chunks(docs))
 
     if len(partials) == 1:
         return partials[0]

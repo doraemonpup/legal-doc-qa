@@ -68,6 +68,10 @@ class Settings:
             raise ValueError(f"Invalid EMBEDDING_PROVIDER: {self.embedding_provider}")
 
 
+LLM_TIMEOUT_SECONDS = 90
+LLM_MAX_RETRIES = 2
+
+
 def get_llm(settings: Settings):
     provider = settings.llm_provider
     if provider == "openai":
@@ -76,6 +80,8 @@ def get_llm(settings: Settings):
             model=settings.openai_model,
             temperature=0,
             api_key=settings.openai_api_key,
+            timeout=LLM_TIMEOUT_SECONDS,
+            max_retries=LLM_MAX_RETRIES,
         )
     if provider == "openrouter":
         from langchain_openai import ChatOpenAI
@@ -85,11 +91,14 @@ def get_llm(settings: Settings):
             base_url="https://openrouter.ai/api/v1",
             temperature=0,
             default_headers={"HTTP-Referer": "http://localhost:8501"},
+            timeout=LLM_TIMEOUT_SECONDS,
+            max_retries=LLM_MAX_RETRIES,
         )
     from langchain_ollama import ChatOllama
     return ChatOllama(
         model=settings.ollama_model,
         temperature=0,
+        client_kwargs={"timeout": LLM_TIMEOUT_SECONDS},
     )
 
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import streamlit as st
 
 from legal_doc_qa.config import Settings
@@ -67,6 +69,10 @@ def init_session_state():
         st.session_state.chunks = []
     if "pending_question" not in st.session_state:
         st.session_state.pending_question = None
+    if "processed_sig" not in st.session_state:
+        st.session_state.processed_sig = None
+    if "failed_sig" not in st.session_state:
+        st.session_state.failed_sig = None
     if "welcomed" not in st.session_state:
         st.session_state.welcomed = False
 
@@ -74,6 +80,7 @@ def clear_session():
     keys = [
         "doc_processed", "vectorstore", "summary", "messages", "filename",
         "page_warnings", "suggested_questions", "pending_question", "chunks",
+        "processed_sig", "failed_sig",
     ]
     for k in keys:
         if k in st.session_state:
@@ -90,43 +97,58 @@ def render_sidebar():
         settings = st.session_state.settings
         st.info(f"**LLM Provider:** `{settings.llm_provider}`")
         if settings.llm_provider == "ollama":
-            st.caption(f"Model: {settings.ollama_model}")
+            model_name = settings.ollama_model
         elif settings.llm_provider == "openrouter":
-            st.caption(f"Model: {settings.openrouter_model}")
+            model_name = settings.openrouter_model
         else:
-            st.caption(f"Model: {settings.openai_model}")
+            model_name = settings.openai_model
+        st.caption(f"Model: {model_name}")
+        if "free" in model_name.lower():
+            st.caption("ℹ️ Free-tier models are rate-limited and can be slow.")
 
         if st.session_state.doc_processed:
             if st.button("🔄 New Document", use_container_width=True):
                 clear_session()
 
         st.divider()
-        st.caption("Legal Document Analyzer v1.3")
+        st.caption("Legal Document Analyzer v1.4")
 
 def handle_upload(uploaded_file):
     file_bytes = uploaded_file.read()
     filename = uploaded_file.name
+    sig = (filename, getattr(uploaded_file, "size", None))
     settings = st.session_state.settings
 
+    t0 = time.perf_counter()
     with st.spinner("📖 Extracting text from PDF..."):
         try:
             docs, page_warnings = process_pdf(file_bytes, settings, filename)
         except ValueError as e:
+            st.session_state.failed_sig = sig
             st.error(str(e))
             return
+    st.caption(f"📖 Extracted {len(docs)} chunks in {time.perf_counter() - t0:.1f}s")
 
-    with st.spinner("🧠 Embedding and storing in vector database..."):
-        try:
-            vectorstore = create_store(docs, settings)
-        except Exception as e:
-            st.error(f"Failed to build the vector store: {e}")
-            return
+    t1 = time.perf_counter()
+    embed_bar = st.progress(0, text="🧠 Embedding chunks…")
+    try:
+        def embed_progress(done, total):
+            embed_bar.progress(min(done / total, 1.0), text=f"🧠 Embedding chunks… {done}/{total}")
+
+        vectorstore = create_store(docs, settings, progress_cb=embed_progress)
+    except Exception as e:
+        st.session_state.failed_sig = sig
+        st.error(f"Failed to build the vector store: {e}")
+        return
+    st.caption(f"🧠 Embedded in {time.perf_counter() - t1:.1f}s")
 
     summary = ""
+    t2 = time.perf_counter()
     with st.status("📋 Generating key findings summary...", expanded=True) as status:
         try:
-            def progress(i, total):
-                status.update(label=f"📋 Analyzing section {i}/{total}...")
+            def progress(done, total):
+                elapsed = time.perf_counter() - t2
+                status.update(label=f"📋 Analyzed {done}/{total} sections… ({elapsed:.0f}s)")
 
             summary = st.write_stream(
                 generate_summary_progressive(docs, settings, progress)
@@ -134,8 +156,10 @@ def handle_upload(uploaded_file):
             status.update(label="🔑 Key findings ready", state="complete", expanded=False)
         except Exception as e:
             status.update(label="Summary failed", state="error")
+            st.session_state.failed_sig = sig
             st.error(f"Failed to generate the key findings summary: {e}")
             return
+    st.caption(f"📋 Summary generated in {time.perf_counter() - t2:.1f}s")
 
     suggested = []
     with st.spinner("💡 Preparing suggested questions..."):
@@ -152,6 +176,8 @@ def handle_upload(uploaded_file):
     st.session_state.messages = []
     st.session_state.page_warnings = page_warnings
     st.session_state.suggested_questions = suggested
+    st.session_state.processed_sig = sig
+    st.session_state.failed_sig = None
 
     save_summary(settings, filename, summary, suggested)
 
@@ -290,7 +316,14 @@ def render_upload():
             )
 
             if uploaded_file is not None:
-                handle_upload(uploaded_file)
+                sig = (uploaded_file.name, getattr(uploaded_file, "size", None))
+                if sig == st.session_state.failed_sig:
+                    st.warning(f"⚠️ '{uploaded_file.name}' failed to process earlier.")
+                    if st.button("🔁 Try again"):
+                        st.session_state.failed_sig = None
+                        st.rerun()
+                else:
+                    handle_upload(uploaded_file)
         else:
             st.success(f"✅ **{st.session_state.filename}** processed successfully")
             if st.session_state.page_warnings:
