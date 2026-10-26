@@ -48,6 +48,7 @@ class Settings:
     chunk_size: int = field(default_factory=lambda: int(os.getenv("CHUNK_SIZE", "1000")))
     chunk_overlap: int = field(default_factory=lambda: int(os.getenv("CHUNK_OVERLAP", "200")))
     k_retrieval: int = field(default_factory=lambda: int(os.getenv("K_RETRIEVAL", "5")))
+    retrieval_score_threshold: float = field(default_factory=lambda: float(os.getenv("RETRIEVAL_SCORE_THRESHOLD", "0.2")))
 
     def __post_init__(self):
         self.llm_provider = self.llm_provider.lower()

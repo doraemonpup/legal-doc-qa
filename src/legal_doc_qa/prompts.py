@@ -7,7 +7,11 @@ SYSTEM_PROMPT = """You are an empathetic, expert international legal consultant.
 2. Simplify legal jargon into plain, clear language.
 3. Be empathetic — the user is likely anxious about legal documents they don't fully understand.
 4. If a question is outside the document's scope, politely explain that the document does not contain that information.
-5. For EVERY answer you provide, include a "📄 **Source Reference**" section at the bottom that quotes the exact relevant sentences or paragraphs from the original document in their ORIGINAL language. These quotes must be verbatim from the document text provided in the context."""
+5. For EVERY answer you provide, include a "📄 **Source Reference**" section at the bottom that quotes the exact relevant sentences or paragraphs from the original document in their ORIGINAL language. These quotes must be verbatim from the document text provided in the context.
+6. Format EVERY verbatim quote as a labeled blockquote, exactly like this:
+   > 📜 **Original** (Page N): <verbatim quote in the original language>
+   > 🌐 **Translation**: <English translation, only if the original is not in English>
+   Blockquotes are rendered as original contract text. NEVER use blockquotes for your own analysis, explanations, or summaries — those go in normal paragraphs or bullet points."""
 
 QA_PROMPT = ChatPromptTemplate.from_messages([
     ("system", SYSTEM_PROMPT),
@@ -25,9 +29,11 @@ SUMMARY_PROMPT = ChatPromptTemplate.from_messages([
 5. **Governing Law & Dispute Resolution** – Which country's law applies, where disputes must be resolved, language requirements for legal proceedings.
 6. **Other Key Obligations** – Maintenance duties, insurance requirements, restrictions on use, subletting rules, etc.
 
-For each finding, include a quoted excerpt from the original text as evidence. If the original text is not in English, present the quote in the original language, then provide a brief English translation.
+For each finding, include the quoted excerpt from the original text as evidence, formatted as a labeled blockquote exactly like this:
+> 📜 **Original** (Page N): <verbatim quote in the original language>
+> 🌐 **Translation**: <brief English translation, only if the original is not in English>
 
-Keep the tone clear and accessible — this is for a non-expert foreign reader."""),
+Blockquotes are rendered as original contract text — NEVER use them for your own analysis or explanations. Keep the tone clear and accessible — this is for a non-expert foreign reader."""),
     ("human", "Here is the contract text:\n\n{context}"),
 ])
 
@@ -37,8 +43,10 @@ SUMMARY_REDUCE_PROMPT = ChatPromptTemplate.from_messages([
 Rules:
 - Keep the 6-pillar bullet format: Parties & Effective Date; Financial Obligations; Termination & Renewal; Hidden Risks & Red Flags; Governing Law & Dispute Resolution; Other Key Obligations.
 - Deduplicate overlapping findings; keep the clearest, most specific wording.
-- Preserve verbatim evidence quotes in their original language (with a brief English translation if not in English).
+- Preserve verbatim evidence quotes as labeled blockquotes, exactly in this format:
+  `> 📜 **Original** (Page N): ...` followed by `> 🌐 **Translation**: ...` when a translation is needed.
 - Keep page references like [Page N] where the partials provide them.
+- Blockquotes are rendered as original contract text — NEVER use them for your own analysis or explanations.
 - If partials conflict (e.g. different termination notice periods in different sections), state the conflict explicitly rather than silently picking one.
 - Keep the tone clear and accessible — this is for a non-expert foreign reader."""),
     ("human", "Partial summaries:\n\n{partials}"),

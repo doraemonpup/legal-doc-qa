@@ -6,6 +6,7 @@ from legal_doc_qa.config import Settings
 from legal_doc_qa.document_processor import process_pdf
 from legal_doc_qa.vector_store import (
     create_store,
+    docs_from_store,
     load_store,
     reset_persisted_state,
 )
@@ -26,6 +27,25 @@ Upload a PDF contract to get:
 The analyzer will help you understand your contract's terms clearly.
 """
 
+# Anything inside a blockquote is original contract text (styled distinctly);
+# everything outside is the analyst's voice.
+EVIDENCE_CSS = """
+<style>
+.stMarkdown blockquote {
+    background: rgba(76, 126, 242, 0.08);
+    border-left: 4px solid #4c7ef3;
+    border-radius: 6px;
+    padding: 0.6rem 1rem;
+    margin: 0.4rem 0;
+}
+</style>
+"""
+
+NOT_FOUND_MESSAGE = (
+    "🔍 I couldn't find anything about that in this document. "
+    "Try rephrasing your question — it may not be covered by this contract."
+)
+
 def init_session_state():
     if "settings" not in st.session_state:
         st.session_state.settings = Settings()
@@ -43,6 +63,8 @@ def init_session_state():
         st.session_state.page_warnings = []
     if "suggested_questions" not in st.session_state:
         st.session_state.suggested_questions = []
+    if "chunks" not in st.session_state:
+        st.session_state.chunks = []
     if "pending_question" not in st.session_state:
         st.session_state.pending_question = None
     if "welcomed" not in st.session_state:
@@ -51,7 +73,7 @@ def init_session_state():
 def clear_session():
     keys = [
         "doc_processed", "vectorstore", "summary", "messages", "filename",
-        "page_warnings", "suggested_questions", "pending_question",
+        "page_warnings", "suggested_questions", "pending_question", "chunks",
     ]
     for k in keys:
         if k in st.session_state:
@@ -79,7 +101,7 @@ def render_sidebar():
                 clear_session()
 
         st.divider()
-        st.caption("Legal Document Analyzer v1.2")
+        st.caption("Legal Document Analyzer v1.3")
 
 def handle_upload(uploaded_file):
     file_bytes = uploaded_file.read()
@@ -123,6 +145,7 @@ def handle_upload(uploaded_file):
             suggested = []
 
     st.session_state.vectorstore = vectorstore
+    st.session_state.chunks = docs
     st.session_state.summary = summary
     st.session_state.doc_processed = True
     st.session_state.filename = filename
@@ -148,6 +171,7 @@ def try_restore_session():
         return
 
     st.session_state.vectorstore = store
+    st.session_state.chunks = docs_from_store(store)
     st.session_state.summary = cached["summary"]
     st.session_state.filename = cached.get("filename") or "restored document"
     st.session_state.suggested_questions = cached.get("questions", [])
@@ -211,9 +235,27 @@ def render_chat():
                 # History excludes the question we just appended.
                 history = st.session_state.messages[:-1]
                 source_docs = retrieve_context(
-                    st.session_state.vectorstore, settings, prompt, history
+                    st.session_state.vectorstore,
+                    settings,
+                    prompt,
+                    history,
+                    chunks=st.session_state.chunks,
                 )
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
+            st.session_state.messages.pop()
+            return
 
+        if not source_docs:
+            # Nothing above threshold — answer deterministically, skip the LLM.
+            st.markdown(NOT_FOUND_MESSAGE)
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": NOT_FOUND_MESSAGE,
+            })
+            return
+
+        try:
             answer_text = st.write_stream(
                 stream_answer(settings, prompt, source_docs)
             ) or ""
@@ -261,6 +303,7 @@ def render_upload():
 
 def main():
     init_session_state()
+    st.markdown(EVIDENCE_CSS, unsafe_allow_html=True)
     try_restore_session()
     render_sidebar()
     render_welcome()

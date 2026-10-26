@@ -9,8 +9,10 @@ Legal Document Analyzer — upload a contract PDF (in any language) and get a ke
   Map-reduce over the whole document, so long contracts are fully covered; findings cite
   `[Page N]` references.
 - 💬 **Cross-lingual Q&A** — ask in your language; answers quote the original source text.
-  Follow-up questions are rewritten with chat history before retrieval, and answers stream
-  in as they're generated.
+  Hybrid retrieval (BM25 + vector) catches exact clause numbers, amounts, and dates;
+  follow-ups are rewritten with chat history; answers stream in as they're generated.
+- 📜 **Evidence styling** — verbatim contract quotes render as tinted blockquotes
+  (`📜 Original` / `🌐 Translation`), clearly separated from the analyst's own text.
 - 💡 **Suggested questions** — 3–5 clickable follow-ups generated from the summary.
 - 🔄 **Session restore** — a page refresh reloads the document, summary, suggestions, and chat from disk.
 - 🔒 **Local embeddings** — multilingual e5 model runs in-process; no embedding service needed.
@@ -47,3 +49,6 @@ uv run streamlit run src/legal_doc_qa/app.py
   "New Document" wipes both. Delete the files to reset everything.
 - Retrieved Q&A context is capped at 8k chars; the summary runs map-reduce in 14k-char
   batches so full contracts are covered.
+- Retrieval is hybrid (BM25 + vector via reciprocal rank fusion). `RETRIEVAL_SCORE_THRESHOLD`
+  (default 0.2) filters weak vector matches; when nothing survives, the app answers with a
+  fixed not-found message without calling the LLM.
